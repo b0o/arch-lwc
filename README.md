@@ -12,6 +12,8 @@ sudo arch-lwc -tu container-user -p "firefox-developer-edition" \
   -x "firefox-developer-edition" firefox
 ```
 
+## Usage
+
 <!-- USAGE -->
 
 ```
