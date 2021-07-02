@@ -88,7 +88,7 @@ Options
                  separated by semicolons and/or newlines.
 
 About
-  Version:    0.0.1
+  Version:    0.0.2
   Repository: https://github.com/b0o/arch-lwc
   Issues:     https://github.com/b0o/arch-lwc/issues
   License:    MIT (https://mit-license.org)
