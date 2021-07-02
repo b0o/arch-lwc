@@ -27,8 +27,8 @@ declare -ga default_pkgs=("base" "pacman-contrib")
 declare -g default_groups="tty,wheel,video,input"
 
 declare -g tmp=""
-declare -g mounted_tmpfs=""
-declare -g made_container=""
+declare -g ephemeral_mount=""
+declare -g ephemeral_directory=""
 
 function usage() {
   cat << EOF
@@ -114,10 +114,10 @@ EOF
 }
 
 function cleanup() {
-  if [[ -n "$mounted_tmpfs" ]]; then
-    umount -v "$mounted_tmpfs"
-    if [[ -n "$made_container" ]]; then
-      rmdir -v "$made_container"
+  if [[ -n "$ephemeral_mount" ]]; then
+    umount -v "$ephemeral_mount"
+    if [[ -n "$ephemeral_directory" ]]; then
+      rmdir -v "$ephemeral_directory"
     fi
   fi
   if [[ -n "$tmp" && -d "$tmp" && "$(realpath -m "$tmp")" != "/" ]]; then
@@ -264,11 +264,11 @@ function main() {
     fi
   else
     mkdir -p "$container"
-    made_container="$container"
+    ephemeral_directory="$container"
   fi
   if [[ -n "$fstype" ]]; then
     mount -t "$fstype" "$(basename "$container")-$fstype" "$container"
-    mounted_tmpfs="$container"
+    ephemeral_mount="$container"
   fi
 
   pacstrap "${pacstrap_opts[@]}" "$container" "${pkgs[@]}"
