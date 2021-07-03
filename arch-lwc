@@ -32,7 +32,7 @@ declare -g ephemeral_directory=""
 
 function usage() {
   cat << EOF
-Usage: $prog [opts] CONTAINER
+Usage: $prog [OPTS] CONTAINER
 
 Create and run lightweight Arch Linux containers with pacstrap and systemd.
 
