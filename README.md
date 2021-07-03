@@ -18,7 +18,7 @@ sudo arch-lwc -tu container-user -p firefox-developer-edition \
 
 ```
 
-Usage: arch-lwc [opts] CONTAINER
+Usage: arch-lwc [OPTS] CONTAINER
 
 Create and run lightweight Arch Linux containers with pacstrap and systemd.
 
