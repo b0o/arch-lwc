@@ -25,7 +25,7 @@ base="$(realpath -e "${BASH_SOURCE[0]}")"
 prog="$(basename "$base")"
 
 # Meta
-declare -gr version="0.0.2"
+declare -gr version="0.0.3"
 declare -gr authors=("$(years_from 2021) Maddison Hellstrom <github.com/b0o>")
 declare -gr repository="https://github.com/b0o/$prog"
 declare -gr issues="https://github.com/b0o/$prog/issues"

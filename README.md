@@ -215,7 +215,7 @@ Options
                  the order they are specified. All -c CMDs set with the create
                  command will be run before -c CMDs set with the start command.
 
-arch-lwc version 0.0.2
+arch-lwc version 0.0.3
 Repository: https://github.com/b0o/arch-lwc
 Issues:     https://github.com/b0o/arch-lwc/issues
 License:    MIT (https://mit-license.org)
