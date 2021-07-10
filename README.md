@@ -2,11 +2,11 @@
 
 Create and run lightweight Arch Linux containers with pacstrap and systemd.
 
-For example, to run a fresh instance of Firefox Developer Edition in an
-ephemeral container from a Wayland host and pass through the GUI:
+For example, to run a fresh containerized instance of Firefox Developer Edition
+from a Wayland host and pass through the GUI:
 
 ```sh
-sudo arch-lwc -tu container-user -p firefox-developer-edition \
+sudo arch-lwc run -u container-user -p firefox-developer-edition \
   -b /dev/shm -b /dev/dri -b /dev/snd -b "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/var/run/user/container-user/$WAYLAND_DISPLAY" \
   -e XDG_RUNTIME_DIR=/var/run/user/container-user -e "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" -e MOZ_ENABLE_WAYLAND=1 \
   -x firefox-developer-edition ./firefox-container
@@ -229,7 +229,7 @@ Copyright:  2021 Maddison Hellstrom <github.com/b0o>
 
 - [ ] Installation instructions
 - [ ] AUR Package
-- [X] Separate create and run functionality
+- [x] Separate create and run functionality
 
 ## License
 
