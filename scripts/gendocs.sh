@@ -23,7 +23,7 @@ declare -gA targets=(
 declare -gi copyright_start=2021
 
 function target_readme() {
-  section -s USAGE -c <<< "$("$main" -h 2>&1)"
+  section -s USAGE -c <<< "$("$main" -h all 2>&1)"
   section -s LICENSE << EOF
 &copy; ${copyright_start}$( (($(date +%Y) == copyright_start)) || date +-%Y) Maddison Hellstrom
 
