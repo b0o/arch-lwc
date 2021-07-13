@@ -39,28 +39,34 @@ declare -gr default_user="root"
 declare -gr default_groups="tty,wheel,video,input"
 
 # Global options
-declare -gi interactive=0
 declare -gi create_run=0
+declare -ga bash_settings=("+x")
+declare -g systemd_log_level="info"
 
 # Global state
 declare -g tmp=""
+declare -g cur_cmd=""
 
 function usage() {
   cat << EOF
-Usage: $prog [OPTS] COMMAND
+Usage: $prog [OPT...] COMMAND
 
 Create, manage, and run lightweight Arch Linux containers with pacstrap and systemd.
 
 Options
-  -h [COMMAND] Display usage information.
-  -v           Display $prog version and copyright information.
-  -i           Enable interactive mode.
+  -h [COMMAND]    Display usage information.
+  -v              Display $prog version and copyright information.
+  -q              Output debug messages.
 
 Commands
-  create [OPTS] CONTAINER  Create a new container.
-  start  [OPTS] CONTAINER  Start an existing container.
-  run    [OPTS] CONTAINER  Create and start a container.
-  help   [COMMAND|all]     Display usage information.
+  create   Create a new container.
+  exec     Execute a command in a running container.
+  help     Display usage information.
+  run      Create and start a container.
+  start    Start an existing container.
+  status   Display container status.
+  stop     Stop a running container.
+  version  Display $prog version and copyright information.
 
 EOF
 }
@@ -71,9 +77,19 @@ function usage_help() {
 
 function usage_all() {
   usage
+  echo -e "-----\n"
   usage_create
-  usage_start
+  echo -e "-----\n"
+  usage_exec
+  echo -e "-----\n"
   usage_run
+  echo -e "-----\n"
+  usage_start
+  echo -e "-----\n"
+  usage_status
+  echo -e "-----\n"
+  usage_stop
+  echo -e "-----\n"
   usage_version
 }
 
@@ -93,140 +109,196 @@ EOF
 function _usage_create_run() {
   cat << EOF
 Options
-  -p PKG         Append package to list of packages to be installed. May be
-                 specified more than once. (default: ${default_pkgs[*]})
+  -p PKG          Append package to list of packages to be installed. May be
+                  specified more than once. (default: ${default_pkgs[*]})
 
-  -P PKG         Like -p, but override default packages.
+  -P PKG          Like -p, but override default packages.
 
-  -u USER        Name of target user inside the container. If the user doesn't
-                 exist, it will created. to create inside container. Any
-                 commands specified with -x or -c will run as this user from the
-                 user's home directory. If not specified, the $default_user user will be
-                 used. (default: $default_user)
+  -u USER         Name of target user inside the container. If the user doesn't
+                  exist, it will created. to create inside container. Any
+                  commands specified with -x or -c will run as this user from the
+                  user's home directory. If not specified, the $default_user user will be
+                  used.
 
-  -g GRP[,GRP..] Add the user to these groups in addition to the default
-                 groups. (default: $default_groups)
+  -g GRP[,GRP...] Add the user to these groups in addition to the default
+                  groups. (default: $default_groups)
 
-  -G GRP[,GRP..] Like -g, but override default groups. Use -G "" to prevent
-                 adding the user to any groups.
+  -G GRP[,GRP...] Like -g, but override default groups. Use -G "" to prevent
+                  adding the user to any groups.
 
-  -T             Don't disable securetty (this will likely prevent $prog from
-                 running the container and prevent you from obtaining a shell
-                 in the container).
+  -T              Don't disable securetty (this will likely prevent $prog from
+                  running the container and prevent you from obtaining a shell
+                  in the container).
 
-  -f SRC[:DST]   Copy the file SRC from the host machine to DST in the container.
-                 If DST is omitted, it will be inferred as SRC's absolute path.
+  -f SRC[:DST]    Copy the file SRC from the host machine to DST in the container.
+                  If DST is omitted, it will be inferred as SRC's absolute path.
 
-  -n NSPAWNARG   When running the container, pass NSPAWNARG as a command-line
-                 argument to systemd-nspawn. May be specified more than once.
-                 Arguments with values, such as for systemd-nspawn's -E /
-                 --setenv option, should be passed either as a single -n with
-                 no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential -n
-                 arguments (e.g. -n "-E" -n "VAR=VAL").
+  -n NSPAWNARG    When running the container, pass NSPAWNARG as a command-line
+                  argument to systemd-nspawn. May be specified more than once.
+                  Arguments with values, such as for systemd-nspawn's -E /
+                  --setenv option, should be passed either as a single -n with
+                  no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential -n
+                  arguments (e.g. -n "-E" -n "VAR=VAL").
 
-                 See systemd-nspawn(1) for more information on systemd-nspawn
-                 arguments. Note that certain systemd-nspawn arguments may conflict
-                 with the behavior of $prog, such as --boot.
+                  See systemd-nspawn(1) for more information on systemd-nspawn
+                  arguments. Note that certain systemd-nspawn arguments may conflict
+                  with the behavior of $prog, such as --boot.
 
-                 For example, -n "--bind=/etc".
+                  For example, -n "--bind=/etc".
 
-                 For convenience, the following systemd-nspawn options have $prog aliases:
-                   $prog opt    systemd-nspawn opt
-                   -b ARG ${prog//?/ } --bind=ARG
-                   -B ARG ${prog//?/ } --bind-ro=ARG
-                   -e ARG ${prog//?/ } --setenv=ARG
+                  For convenience, the following systemd-nspawn options have $prog aliases:
+                    $prog opt    systemd-nspawn opt
+                    -b ARG ${prog//?/ } --bind=ARG
+                    -B ARG ${prog//?/ } --bind-ro=ARG
+                    -e ARG ${prog//?/ } --setenv=ARG
 
-  -x CMD         Run CMD inside the container after preliminary setup is
-                 complete. CMD will be interpreted by bash and can contain
-                 multiple statements separated by semicolons and/or newlines.
+  -x CMD          Run CMD inside the container as the target user after
+                  preliminary setup is complete. CMD will be interpreted by bash
+                  and can contain multiple statements separated by semicolons
+                  and/or newlines.
 
-                 Modifications to the container will persist, making -x useful
-                 for doing any extra setup needed.
+                  Modifications to the container will persist, making -x useful
+                  for doing any extra setup needed.
 
-                 Note that CMD only runs during the container creation phase, not
-                 when the container is run. For that, see -c.
+                  Note that CMD only runs during the container creation phase, not
+                  when the container is run. For that, see -c.
 
-  -c CMD         Run CMD inside the container when the container is run. CMD
-                 will be interpreted by bash and can contain multiple
-                 statements separated by semicolons and/or newlines.
+  -X CMD          Like -x, but run CMD as the root user. -X CMDs are run before
+                  -x CMDs.
 
-                 Note that CMD will not run during the creation phase, only when
-                 the container is run.
+  -c CMD          Run CMD inside the container when the container is run. CMD
+                  will be interpreted by bash and can contain multiple
+                  statements separated by semicolons and/or newlines.
 
-                 If specified multiple times, CMDs are run synchronously in
-                 the order they are specified. All -c CMDs set with the create
-                 command will be run before -c CMDs set with the start command.
+                  Note that CMD will not run during the creation phase, only when
+                  the container is run.
+
+                  If specified multiple times, CMDs are run synchronously in
+                  the order they are specified. All -c CMDs set with the create
+                  command will be run before -c CMDs set with the start command.
+EOF
+  if [[ $1 == "run" ]]; then
+    cat << EOF
+
+                  If CMD is "-", any -c CMDs specified when the container was
+                  created are overridden.
+EOF
+  fi
+  cat << EOF
+
+  -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
+                  -c CMDs.
 
 EOF
 }
 
 function usage_create() {
   cat << EOF
-Usage: $prog create [OPTS] CONTAINER
+Usage: $prog create [OPT...] CONTAINER
 
 Create a new container at the path CONTAINER.
 
 EOF
-  _usage_create_run
+  _usage_create_run create
 }
 
 function usage_start() {
   cat << EOF
-Usage: $prog start [OPTS] CONTAINER
+Usage: $prog start [OPT...] CONTAINER
 
 Start an existing container at the path CONTAINER.
 
 Options
 
-  -u USER        Name of target user inside the container. Any commands
-                 specified with -c will run as this user from the user's home
-                 directory. If not specified, the user that the container was
-                 created with or the $default_user user will be used.
+  -u USER         Name of target user inside the container. Any commands
+                  specified with -c will run as this user from the user's home
+                  directory. If not specified, the user that the container was
+                  created with or the $default_user user will be used.
 
-  -n NSPAWNARG   Pass NSPAWNARG as a command-line argument to systemd-nspawn.
-                 May be specified more than once.  Arguments with values, such
-                 as for systemd-nspawn's -E / --setenv option, should be passed
-                 either as a single -n with no spaces (e.g. -n "--setenv=VAR=VAL")
-                 or as two sequential -n arguments (e.g. -n "-E" -n "VAR=VAL").
+  -n NSPAWNARG    Pass NSPAWNARG as a command-line argument to systemd-nspawn.
+                  May be specified more than once.  Arguments with values, such
+                  as for systemd-nspawn's -E / --setenv option, should be passed
+                  either as a single -n with no spaces (e.g. -n "--setenv=VAR=VAL")
+                  or as two sequential -n arguments (e.g. -n "-E" -n "VAR=VAL").
 
-                 See systemd-nspawn(1) for more information on systemd-nspawn
-                 arguments. Note that certain systemd-nspawn arguments may conflict
-                 with the behavior of $prog, such as --boot.
+                  See systemd-nspawn(1) for more information on systemd-nspawn
+                  arguments. Note that certain systemd-nspawn arguments may conflict
+                  with the behavior of $prog, such as --boot.
 
-                 For example, -n "--bind=/etc".
+                  For example, -n "--bind=/etc".
 
-                 For convenience, the following systemd-nspawn options have $prog aliases:
-                   $prog opt    systemd-nspawn opt
-                   -b ARG ${prog//?/ } --bind=ARG
-                   -B ARG ${prog//?/ } --bind-ro=ARG
-                   -e ARG ${prog//?/ } --setenv=ARG
+                  For convenience, the following systemd-nspawn options have $prog aliases:
+                    $prog opt    systemd-nspawn opt
+                    -b ARG ${prog//?/ } --bind=ARG
+                    -B ARG ${prog//?/ } --bind-ro=ARG
+                    -e ARG ${prog//?/ } --setenv=ARG
 
-  -N NSPAWNARG   Like -n, but override any NSPAWNARGs specified during container creation.
+  -N NSPAWNARG    Like -n, but override any NSPAWNARGs specified during container creation.
 
-  -c CMD         Run CMD inside the container. CMD will be interpreted by bash
-                 and can contain multiple statements separated by semicolons
-                 and/or newlines.
+  -c CMD          Run CMD inside the container. CMD will be interpreted by bash
+                  and can contain multiple statements separated by semicolons
+                  and/or newlines.
 
-                 All -c CMDs that were specified during container creation will
-                 be run before -c CMDs specified with the start command.
+                  All -c CMDs that were specified during container creation will
+                  be run before -c CMDs specified with the start command.
 
-                 If specified multiple times, CMDs are run synchronously in
-                 the order they are specified. All -c CMDs set with the create
-                 command will be run before -c CMDs set with the start command.
+                  If specified multiple times, CMDs are run synchronously in
+                  the order they are specified. All -c CMDs set with the create
+                  command will be run before -c CMDs set with the start command.
 
-  -C CMD         Like -c, but override any CMDs specified during container creation.
+                  If CMD is "-", any -c CMDs specified when the container was
+                  created are overridden.
+
+  -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
+                  -c CMDs.
 
 EOF
 }
 
 function usage_run() {
   cat << EOF
-Usage: $prog run [OPTS] CONTAINER
+Usage: $prog run [OPT...] CONTAINER
 
 Create and run a new container at the path CONTAINER.
 
 EOF
-  _usage_create_run
+  _usage_create_run run
+}
+
+function usage_exec() {
+  cat << EOF
+Usage: $prog exec [OPT...] CONTAINER [CMD] [ARG...]
+
+Run a command in a running container. If no CMD is specified, an interactive
+shell is launched.
+
+Options
+
+  -u USER         Name of target user inside the container. Any commands
+                  specified with -c will run as this user from the user's home
+                  directory. If not specified, the user that the container was
+                  created with or the $default_user user will be used.
+
+
+EOF
+}
+
+function usage_stop() {
+  cat << EOF
+Usage: $prog stop CONTAINER
+
+Stop a running container.
+
+EOF
+}
+
+function usage_status() {
+  cat << EOF
+Usage: $prog status CONTAINER
+
+Display container status.
+
+EOF
 }
 
 function write_config() {
@@ -260,22 +332,113 @@ function check_deps() {
   return $code
 }
 
+function container_stop() {
+  local container="$1"
+  if ! machinectl status "$container" &> /dev/null; then
+    return 0
+  fi
+  echo "Stopping container" >&2
+  systemd-run -M "$container" \
+    /usr/bin/env bash -c "
+      set ${bash_settings[*]}
+      if systemctl is-active container-setup.service; then
+        systemctl stop container-setup.service && exit 1
+      fi
+      if systemctl is-active container-start.service; then
+        systemctl stop container-start.service && exit 1
+      fi
+      systemctl poweroff
+      exit 1
+    "
+  echo "Waiting for container to exit" >&2
+  while machinectl status "$container" &> /dev/null; do
+    sleep 0.1
+  done
+}
+
+function container_exec() {
+  local systemd_run_args=()
+  local -i dashdash=0
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "--" ]]; then
+      dashdash=1
+      break
+    fi
+    systemd_run_args+=("$arg")
+  done
+  if [[ $dashdash -eq 0 ]]; then
+    systemd_run_args=()
+  else
+    shift $((${#systemd_run_args[@]} + 1))
+  fi
+  local user="$1" container="$2"
+  shift 2
+  if [[ "$user" != "root" ]]; then
+    systemd_run_args+=("--user")
+  fi
+
+  if ! machinectl status "$container_name" &> /dev/null; then
+    echo "$prog: error: container not running: $container" >&2
+    return 1
+  fi
+
+  systemd-run "${systemd_run_args[@]}" -M "${user}@${container}" \
+    /usr/bin/env bash -c "set ${bash_settings[*]}; $*"
+}
+
+function container_shell() {
+  local machinectl_shell_args=()
+  local -i dashdash=0
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "--" ]]; then
+      dashdash=1
+      break
+    fi
+    machinectl_shell_args+=("$arg")
+  done
+  if [[ $dashdash -eq 0 ]]; then
+    machinectl_shell_args=()
+  else
+    shift $((${#machinectl_shell_args[@]} + 1))
+  fi
+  local user="$1" container="$2"
+  shift 2
+
+  if ! machinectl status "$container" &> /dev/null; then
+    echo "$prog: error: container not running: $container" >&2
+    return 1
+  fi
+
+  machinectl "${machinectl_shell_args[@]}" shell "${user}@${container}" \
+    /usr/bin/env bash ${1:+-c} ${1:+"$*"}
+}
+
 function cmd_create() {
   local -a pkgs_base=("${default_pkgs[@]}")
   local -a pkgs=()
-  local user
+  local user="root"
   local groups_base="$default_groups"
   local groups=""
   local -i securetty=0
   local -a files=()
   local -a build_cmds=()
+  local -a root_build_cmds=()
   local -a run_cmds=()
+  local -a root_run_cmds=()
   local -a nspawn_args=()
+  local -a nspawn_create_args=()
 
   local opt OPTARG
   local -i OPTIND
-  while getopts ":p:P:u:g:G:Tf:n:b:B:e:x:c:" opt "$@"; do
+  while getopts "hp:P:u:g:G:Tf:n:b:B:e:x:X:c:C:" opt "$@"; do
     case "$opt" in
+    h)
+      # shellcheck disable=SC2119
+      cmd_help
+      return 0
+      ;;
     p)
       pkgs+=("$OPTARG")
       ;;
@@ -324,11 +487,16 @@ function cmd_create() {
     x)
       build_cmds+=("$OPTARG")
       ;;
+    X)
+      root_build_cmds+=("$OPTARG")
+      ;;
     c)
       run_cmds+=("$OPTARG")
       ;;
-    *)
-      echo "$prog: error: invalid option -- -$OPTARG" >&2
+    C)
+      root_run_cmds+=("$OPTARG")
+      ;;
+    \?)
       return 1
       ;;
     esac
@@ -340,9 +508,10 @@ function cmd_create() {
     return 1
   fi
 
-  local container container_base
+  local container container_base container_name
   container_base="$(realpath -m "$1")"
   container="${container_base}/container"
+  container_name="$(basename "$container_base")"
   shift
 
   if [[ $# -gt 1 ]]; then
@@ -350,20 +519,8 @@ function cmd_create() {
     return 1
   fi
 
-  if [[ $UID -ne 0 ]]; then
-    echo "$prog: error: must be run as root" >&2
-    return 1
-  fi
-
-  check_deps
-
   pkgs=("${pkgs_base[@]}" "${pkgs[@]}")
   groups="${groups_base:+${groups_base}${groups:+,}}${groups}"
-
-  local pacstrap_opts=(-G)
-  if [[ $interactive -eq 1 ]]; then
-    pacstrap_opts+=(-i)
-  fi
 
   if [[ ! -d "$container_base" && -e "$container_base" ]]; then
     echo "$prog: error: CONTAINER exists and is not an empty directory: $container_base" >&2
@@ -378,15 +535,15 @@ function cmd_create() {
     mkdir -p "$container"
   fi
 
-  pacstrap "${pacstrap_opts[@]}" "$container" "${pkgs[@]}"
+  pacstrap -G "$container" "${pkgs[@]}"
 
   if [[ $securetty -eq 0 ]]; then
     echo "Remove securetty configuration" >&2
     rm "$container/etc/securetty" "$container/usr/share/factory/etc/securetty"
-    sh -c "echo 'NoExtract = /etc/securetty /usr/share/factory/etc/securetty' >> '$container/etc/pacman.conf'"
+    sed -i 's|^\[options\]$|&\nNoExtract = /etc/securetty /usr/share/factory/etc/securetty|' \
+      "$container/etc/pacman.conf"
   fi
 
-  local -a nspawn_create_args=()
   local -a files_tmp=()
   if [[ ${#files[@]} -gt 0 ]]; then
     mkdir "$tmp/copy"
@@ -417,30 +574,32 @@ function cmd_create() {
     local -i i=1
     for cmd in "${build_cmds[@]}"; do
       local c="$tmp/build_cmds/$i"
-      echo "Prepare create cmd $c"
+      echo "Prepare build cmd $c" >&2
       {
-        echo "set -x"
+        echo "set ${bash_settings[*]}"
         echo "$cmd"
       } > "$c"
       chmod a+rx "$c"
       i=$((i + 1))
+      cat "$c" >&2
     done
   fi
 
   {
     declare -p version pkgs_base pkgs user \
       groups_base groups securetty files \
-      build_cmds run_cmds nspawn_args
+      build_cmds run_cmds root_run_cmds nspawn_args
   } | write_config "$container_base/config"
 
   {
     cat << EOF
-      #!/usr/bin/env bash
-      set -x
+      set ${bash_settings[@]} -euo pipefail
+      function handle_exit() {
+        systemctl disable container-setup.service
+      }
+      trap handle_exit EXIT
       if ! getent passwd "$user" >/dev/null 2>&1; then
-        useradd -U -s /usr/bin/bash -d "/home/$user" "$user"
-        mkdir "/home/$user"
-        chown "$user:$user" "/home/$user"
+        useradd -Ums /bin/bash "$user"
       fi
 EOF
     if [[ -n "$groups" ]]; then
@@ -452,30 +611,43 @@ EOF
         echo "install -D \"$f\" \"/$(realpath -m --relative-base="$tmp/copy" "$f")\""
       done
     fi
-
     for i in $(seq 1 ${#build_cmds[@]}); do
-      echo "echo \"create command $i\""
-      if [[ "$user" == "root" ]]; then
-        echo "env -C /root bash /tmp/container/build_cmds/$i"
-      else
-        echo "cp /tmp/container/build_cmds/$i /tmp/cmd"
-        echo "chown \"$user:$user\" /tmp/cmd"
-        echo "chmod +x /tmp/cmd"
-        # shellcheck disable=SC2028
-        echo "su -w \"\$(env | cut -d'=' -f1 | tr '\n' ',' | sed 's/,\$//')\" -lc 'bash /tmp/cmd ' \"$user\""
-        echo "rm /tmp/cmd"
-      fi
+      echo "echo \"build command $i\""
+      echo "env -C /root bash /tmp/container/build_cmds/$i.sh"
     done
-
     echo "echo \"Setup complete\""
   } > "$tmp/setup.sh"
 
-  systemd-nspawn -D "$container" --bind-ro="$tmp:/tmp/container" \
+  {
+    cat << EOF
+[Unit]
+Description=$prog initial setup
+DefaultDependencies=no
+SuccessAction=exit
+FailureAction=exit
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash /tmp/container/setup.sh
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=default.target
+EOF
+  } > "$tmp/container-setup.service"
+
+  mkdir -p "$container/etc/systemd/system/default.target.wants"
+  ln -s "/etc/systemd/system/container-setup.service" "$container/etc/systemd/system/default.target.wants/container-setup.service"
+  nspawn_create_args+=("--bind-ro=$tmp/container-setup.service:/etc/systemd/system/container-setup.service")
+
+  systemd-nspawn -bM "$container_name" -D "$container" --bind-ro="$tmp:/tmp/container" \
     "${nspawn_create_args[@]}" \
     "${nspawn_args[@]}" \
-    bash /tmp/container/setup.sh
+    -- --log-level="$systemd_log_level"
 
-  echo "Container $container_base created successfully" >&2
+  echo "Container $container_base created successfully." >&2
 
   if [[ $create_run -eq 1 ]]; then
     cmd_start "$container_base"
@@ -484,24 +656,33 @@ EOF
 
 function cmd_start() {
   local user
-  local -i run_cmds_override=0
   local -a run_cmds=()
-  local -i nspawn_args_override=0
+  local -i run_cmds_override=0
+
+  local -a root_run_cmds=()
+  local -i root_run_cmds_override=0
+
   local -a nspawn_args=()
+  local -i nspawn_args_override=0
 
   local opt OPTARG
   local -i OPTIND
-  while getopts "u::n:N:b:B:e:c:C:" opt "$@"; do
+  while getopts "hu:n:b:B:e:c:C:" opt "$@"; do
     case "$opt" in
+    h)
+      # shellcheck disable=SC2119
+      cmd_help
+      return 0
+      ;;
     u)
       user="$OPTARG"
       ;;
     n)
-      nspawn_args+=("$OPTARG")
-      ;;
-    N)
-      nspawn_args_override=1
-      nspawn_args+=("$OPTARG")
+      if [[ $OPTARG == "-" ]]; then
+        nspawn_args_override=1
+      else
+        nspawn_args+=("$OPTARG")
+      fi
       ;;
     b)
       nspawn_args+=("--bind=$OPTARG")
@@ -513,14 +694,20 @@ function cmd_start() {
       nspawn_args+=("--setenv=$OPTARG")
       ;;
     c)
-      run_cmds+=("$OPTARG")
+      if [[ $OPTARG == "-" ]]; then
+        run_cmds_override=1
+      else
+        run_cmds+=("$OPTARG")
+      fi
       ;;
     C)
-      run_cmds_override=1
-      run_cmds+=("$OPTARG")
+      if [[ $OPTARG == "-" ]]; then
+        root_run_cmds_override=1
+      else
+        root_run_cmds+=("$OPTARG")
+      fi
       ;;
-    *)
-      echo "$prog: error: invalid option -- -$OPTARG" >&2
+    \?)
       return 1
       ;;
     esac
@@ -532,9 +719,10 @@ function cmd_start() {
     return 1
   fi
 
-  local container container_base
+  local container container_base container_name
   container_base="$(realpath -m "$1")"
   container="${container_base}/container"
+  container_name="$(basename "$container_base")"
   shift
 
   if [[ $# -gt 1 ]]; then
@@ -542,22 +730,15 @@ function cmd_start() {
     return 1
   fi
 
-  if [[ $UID -ne 0 ]]; then
-    echo "$prog: error: must be run as root" >&2
-    return 1
-  fi
-
-  check_deps
-
   if [[ ! -d "$container_base" || ! -e "$container_base/config" || ! -d "$container" ]]; then
-    echo "$prog: error: CONTAINER is not an arch-lwc container: $container_base" >&2
+    echo "$prog: error: CONTAINER is not a valid $prog container: $container_base" >&2
     return 1
   fi
 
   # shellcheck disable=SC2034
   local config_version config_user config_groups_base config_groups
   # shellcheck disable=SC2034
-  local -a config_pkgs_base config_pkgs config_files config_build_cmds config_run_cmds config_nspawn_args
+  local -a config_pkgs_base config_pkgs config_files config_build_cmds config_run_cmds config_root_run_cmds config_nspawn_args
   # shellcheck disable=SC2034
   local -i config_securetty
 
@@ -572,51 +753,179 @@ function cmd_start() {
   if [[ $run_cmds_override -eq 0 ]]; then
     run_cmds=("${config_run_cmds[@]}" "${run_cmds[@]}")
   fi
+  if [[ $root_run_cmds_override -eq 0 ]]; then
+    root_run_cmds=("${config_root_run_cmds[@]}" "${root_run_cmds[@]}")
+  fi
   if [[ $nspawn_args_override -eq 0 ]]; then
     nspawn_args=("${config_nspawn_args[@]}" "${nspawn_args[@]}")
   fi
   user="${user:-${config_user:-${default_user}}}"
 
-  if [[ ${#run_cmds[@]} -eq 0 ]]; then
-    echo "$prog: start: error: expected at least one command to run" >&2
-    return 1
+  local user_events="/tmp/user-events"
+  if [[ "$user" == "root" ]]; then
+    user_events="/tmp/container/events"
   fi
 
   mkdir "$tmp/run_cmds"
   local cmd
-  local -i i=1
+  local -i i=0
   for cmd in "${run_cmds[@]}"; do
     local c="$tmp/run_cmds/$i"
-    echo "Prepare run cmd $c"
+    echo "Prepare run cmd $c" >&2
     {
-      echo "set -x"
-      echo "$cmd"
+      cat << EOF
+      set ${bash_settings[@]} -euo pipefail
+      function handle_exit() {
+        if [[ \$? -eq 0 ]]; then
+          echo cmd-done | tee "$user_events"
+        else
+          echo cmd-fail | tee "$user_events"
+        fi
+      }
+      trap handle_exit EXIT
+      $cmd
+EOF
+    } > "$c"
+    chmod a+rx "$c"
+    i=$((i + 1))
+  done
+
+  mkdir "$tmp/root_run_cmds"
+  local cmd
+  local -i i=0
+  for cmd in "${root_run_cmds[@]}"; do
+    local c="$tmp/root_run_cmds/$i"
+    echo "Prepare root run cmd $c" >&2
+    {
+      cat << EOF
+      set ${bash_settings[@]} -euo pipefail
+      function handle_exit() {
+        if [[ \$? -eq 0 ]]; then
+          echo cmd-done | tee /tmp/container/events
+        else
+          echo cmd-fail | tee /tmp/container/events
+        fi
+      }
+      trap handle_exit EXIT
+      $cmd
+EOF
     } > "$c"
     chmod a+rx "$c"
     i=$((i + 1))
   done
 
   {
-    echo "#!/usr/bin/env bash"
-    echo "set -x"
-    for i in $(seq 1 ${#run_cmds[@]}); do
-      echo "echo \"Run command $i\""
-      if [[ "$user" == "root" ]]; then
-        echo "env -C /root bash /tmp/container/run_cmds/$i"
-      else
-        echo "cp /tmp/container/run_cmds/$i /tmp/cmd"
-        echo "chown \"$user:$user\" /tmp/cmd"
-        echo "chmod +x /tmp/cmd"
-        # shellcheck disable=SC2028
-        echo "su -w \"\$(env | cut -d'=' -f1 | tr '\n' ',' | sed 's/,\$//')\" -lc 'bash /tmp/cmd ' \"$user\""
-        echo "rm /tmp/cmd"
+    cat << EOF
+    set ${bash_settings[@]} -euo pipefail
+    function handle_exit() {
+      c=\${1:-\$?}
+      if [[ \$c -ne 0 ]]; then
+        echo "start-fail" | tee /tmp/container/events
       fi
-    done
+      exit \$c
+    }
+    trap handle_exit EXIT
+    trap 'handle_exit 0' TERM
+
+    systemctl disable container-start.service || true
+
+    cp -r /tmp/container/run_cmds /tmp/run_cmds
+    cp -r /tmp/container/root_run_cmds /tmp/root_run_cmds
+
+    if [[ "$user" != "root" ]]; then
+      chown -R "$user:$user" /tmp/run_cmds
+      chmod -R u+rx /tmp/run_cmds
+      mkfifo "$user_events"
+      chmod a+w "$user_events"
+    fi
+
+    echo "start-done" | tee /tmp/container/events
+
+    if [[ "$user" != "root" ]]; then
+      tail -f "$user_events" | tee /tmp/container/events
+    fi
+
+    tail -f /dev/null
+EOF
   } > "$tmp/start.sh"
 
-  systemd-nspawn -D "$container" --bind-ro="$tmp:/tmp/container" \
-    "${nspawn_args[@]}" \
-    bash /tmp/container/start.sh
+  {
+    cat << EOF
+[Unit]
+Description=$prog entrypoint
+DefaultDependencies=no
+SuccessAction=exit
+FailureAction=exit
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env bash /tmp/container/start.sh
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=default.target
+EOF
+  } > "$tmp/container-start.service"
+
+  mkdir -p "$container/etc/systemd/system/default.target.wants"
+  ln -sf "/etc/systemd/system/container-start.service" "$container/etc/systemd/system/default.target.wants/container-start.service"
+  mkfifo "$tmp/events"
+  chmod a+w "$tmp/events"
+  nspawn_start_args+=("--bind-ro=$tmp/container-start.service:/etc/systemd/system/container-start.service")
+
+  if [[ $((${#root_run_cmds[@]} + ${#run_cmds[@]})) -eq 0 ]]; then
+    exec systemd-nspawn -bM "$container_name" -D "$container" --bind-ro="$tmp:/tmp/container" \
+      "${nspawn_args[@]}" "${nspawn_start_args[@]}" \
+      -- --log-level="$systemd_log_level"
+  fi
+
+  systemd-nspawn -bM "$container_name" -D "$container" --bind-ro="$tmp:/tmp/container" \
+    "${nspawn_args[@]}" "${nspawn_start_args[@]}" \
+    -- --log-level="$systemd_log_level" &
+
+  # shellcheck disable=SC2064
+  trap "container_stop '$container_name'" RETURN
+
+  local -i i=0
+  while ((i < ${#root_run_cmds[@]} + ${#run_cmds[@]})); do
+    local event
+    while read -r event < "$tmp/events"; do
+      echo "event: $event" >&2
+      case "$event" in
+      "start-done") break ;;
+      "cmd-done")
+        i=$((i + 1))
+        if ! ((i < ${#root_run_cmds[@]} + ${#run_cmds[@]})); then
+          break 2
+        fi
+        break
+        ;;
+      "start-fail" | "cmd-fail")
+        return 1
+        ;;
+      *) return 2 ;;
+      esac
+    done
+
+    local -a systemd_run_args=()
+    local cmd
+    if ((i < ${#root_run_cmds[@]})); then
+      cmd="/tmp/root_run_cmds/$i"
+      systemd_run_args=("--machine=root@${container_name}")
+    else
+      cmd="/tmp/run_cmds/$((i - ${#root_run_cmds[@]}))"
+      if [[ "$user" == "root" ]]; then
+        systemd_run_args=("--machine=root@${container_name}")
+      else
+        systemd_run_args=("--user" "--machine=${user}@${container_name}")
+      fi
+    fi
+    echo "Run cmd $i" >&2
+    systemd-run "${systemd_run_args[@]}" --pipe /usr/bin/env bash "$cmd" &
+  done
+  echo "Done" >&2
 }
 
 function cmd_run() {
@@ -624,8 +933,158 @@ function cmd_run() {
   cmd_create "$@"
 }
 
+function cmd_stop() {
+  local opt OPTARG
+  local -i OPTIND
+  while getopts "h" opt "$@"; do
+    case "$opt" in
+    h)
+      # shellcheck disable=SC2119
+      cmd_help
+      return 0
+      ;;
+    \?)
+      return 1
+      ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  if [[ $# -lt 1 ]]; then
+    echo "$prog: error: expected CONTAINER" >&2
+    return 1
+  fi
+
+  local container container_base container_name
+  container_base="$(realpath -m "$1")"
+  container="${container_base}/container"
+  container_name="$(basename "$container_base")"
+  shift
+
+  if [[ $# -gt 1 ]]; then
+    echo "$prog: error: unexpected argument(s): $*" >&2
+    return 1
+  fi
+
+  if [[ ! -d "$container_base" || ! -e "$container_base/config" || ! -d "$container" ]]; then
+    echo "$prog: error: CONTAINER is not a valid $prog container: $container_base" >&2
+    return 1
+  fi
+
+  if ! machinectl status "$container_name" &> /dev/null; then
+    echo "$prog: error: container not running: $container_base" >&2
+    return 1
+  fi
+
+  container_stop "$container_name"
+}
+
+function cmd_status() {
+  local opt OPTARG
+  local -i OPTIND
+  while getopts "h" opt "$@"; do
+    case "$opt" in
+    h)
+      # shellcheck disable=SC2119
+      cmd_help
+      return 0
+      ;;
+    \?)
+      return 1
+      ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  if [[ $# -lt 1 ]]; then
+    echo "$prog: error: expected CONTAINER" >&2
+    return 1
+  fi
+
+  local container container_base container_name
+  container_base="$(realpath -m "$1")"
+  container="${container_base}/container"
+  container_name="$(basename "$container_base")"
+  shift
+
+  if [[ $# -gt 1 ]]; then
+    echo "$prog: error: unexpected argument(s): $*" >&2
+    return 1
+  fi
+
+  if [[ ! -d "$container_base" || ! -e "$container_base/config" || ! -d "$container" ]]; then
+    echo "$prog: error: CONTAINER is not a valid $prog container: $container_base" >&2
+    return 1
+  fi
+
+  if machinectl status "$container_name" &> /dev/null; then
+    echo "running"
+  else
+    echo "stopped"
+  fi
+}
+
+function cmd_exec() {
+  local opt OPTARG
+  local -i OPTIND
+  while getopts "hu:" opt "$@"; do
+    case "$opt" in
+    h)
+      # shellcheck disable=SC2119
+      cmd_help
+      return 0
+      ;;
+    u)
+      user="$OPTARG"
+      ;;
+    \?)
+      return 1
+      ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  if [[ $# -lt 1 ]]; then
+    echo "$prog: error: expected CONTAINER" >&2
+    return 1
+  fi
+
+  local container container_base container_name
+  container_base="$(realpath -m "$1")"
+  container="${container_base}/container"
+  container_name="$(basename "$container_base")"
+  shift
+
+  if [[ ! -d "$container_base" || ! -e "$container_base/config" || ! -d "$container" ]]; then
+    echo "$prog: error: CONTAINER is not a valid $prog container: $container_base" >&2
+    return 1
+  fi
+
+  # shellcheck disable=SC2034
+  local config_version config_user config_groups_base config_groups
+  # shellcheck disable=SC2034
+  local -a config_pkgs_base config_pkgs config_files config_build_cmds config_run_cmds config_root_run_cmds config_nspawn_args
+  # shellcheck disable=SC2034
+  local -i config_securetty
+
+  # shellcheck disable=SC1090
+  source <(load_config "$container_base/config")
+
+  local user="${user:-${config_user:-${default_user}}}"
+
+  if [[ $# -eq 0 ]]; then
+    container_shell "$user" "$container_name"
+  else
+    container_exec --pipe --wait -- "$user" "$container_name" "$@"
+  fi
+}
+
+# shellcheck disable=SC2120
 function cmd_help() {
-  local cmd="${1:-}"
+  local cmd="${1:-${cur_cmd:-}}"
+  if [[ "$cmd" == "help" ]]; then
+    cmd=""
+  fi
   if [[ -n "$cmd" ]]; then
     if [[ "$(type -t "usage_$cmd")" == "function" ]]; then
       "usage_$cmd"
@@ -639,11 +1098,15 @@ function cmd_help() {
   fi
 }
 
+function cmd_version() {
+  usage_version
+}
+
 function main() {
   local cmd
   local opt OPTARG
   local -i OPTIND
-  while getopts ":hvi" opt "$@"; do
+  while getopts "hvd" opt "$@"; do
     case "$opt" in
     h)
       cmd="help"
@@ -652,16 +1115,18 @@ function main() {
       usage_version
       return 0
       ;;
-    i)
-      interactive=1
+    d)
+      systemd_log_level="debug"
+      bash_settings+=("-x" "-v")
       ;;
-    *)
-      echo "$prog: error: invalid option -- -$OPTARG" >&2
+    \?)
       return 1
       ;;
     esac
   done
   shift $((OPTIND - 1))
+
+  set "${bash_settings[@]}"
 
   tmp="$(mktemp -td "$prog-XXXXX")"
   trap "cleanup" EXIT
@@ -680,6 +1145,9 @@ function main() {
     return 1
   fi
 
+  check_deps
+
+  cur_cmd="$cmd"
   "cmd_$cmd" "$@"
 }
 
