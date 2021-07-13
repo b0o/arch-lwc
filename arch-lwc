@@ -751,91 +751,25 @@ function cmd_start() {
   fi
   user="${user:-${config_user:-${default_user}}}"
 
-  local user_events="/tmp/user-events"
-  if [[ "$user" == "root" ]]; then
-    user_events="/tmp/container/events"
-  fi
-
-  mkdir "$tmp/run_cmds"
-  local cmd
-  local -i i=0
-  for cmd in "${run_cmds[@]}"; do
-    local c="$tmp/run_cmds/$i"
-    echo "Prepare run cmd $c" >&2
-    {
-      cat << EOF
-      set ${bash_settings[@]} -euo pipefail
-      function handle_exit() {
-        if [[ \$? -eq 0 ]]; then
-          echo cmd-done | tee "$user_events"
-        else
-          echo cmd-fail | tee "$user_events"
-        fi
-      }
-      trap handle_exit EXIT
-      $cmd
-EOF
-    } > "$c"
-    chmod a+rx "$c"
-    i=$((i + 1))
-  done
-
-  mkdir "$tmp/root_run_cmds"
-  local cmd
-  local -i i=0
-  for cmd in "${root_run_cmds[@]}"; do
-    local c="$tmp/root_run_cmds/$i"
-    echo "Prepare root run cmd $c" >&2
-    {
-      cat << EOF
-      set ${bash_settings[@]} -euo pipefail
-      function handle_exit() {
-        if [[ \$? -eq 0 ]]; then
-          echo cmd-done | tee /tmp/container/events
-        else
-          echo cmd-fail | tee /tmp/container/events
-        fi
-      }
-      trap handle_exit EXIT
-      $cmd
-EOF
-    } > "$c"
-    chmod a+rx "$c"
-    i=$((i + 1))
-  done
-
   {
     cat << EOF
-    set ${bash_settings[@]} -euo pipefail
-    function handle_exit() {
-      c=\${1:-\$?}
-      if [[ \$c -ne 0 ]]; then
-        echo "start-fail" | tee /tmp/container/events
-      fi
-      exit \$c
-    }
-    trap handle_exit EXIT
-    trap 'handle_exit 0' TERM
+      set ${bash_settings[@]} -euo pipefail
+      function handle_exit() {
+        c=\${1:-\$?}
+        if [[ \$c -ne 0 ]]; then
+          echo "start-fail" | tee /tmp/container/events
+        fi
+        exit \$c
+      }
+      trap handle_exit EXIT
+      trap 'handle_exit 0' HUP
 
-    systemctl disable container-start.service || true
+      systemctl disable container-start.service || true
 
-    cp -r /tmp/container/run_cmds /tmp/run_cmds
-    cp -r /tmp/container/root_run_cmds /tmp/root_run_cmds
+      echo "start-done" | tee /tmp/container/events
 
-    if [[ "$user" != "root" ]]; then
-      chown -R "$user:$user" /tmp/run_cmds
-      chmod -R u+rx /tmp/run_cmds
-      mkfifo "$user_events"
-      chmod a+w "$user_events"
-    fi
-
-    echo "start-done" | tee /tmp/container/events
-
-    if [[ "$user" != "root" ]]; then
-      tail -f "$user_events" | tee /tmp/container/events
-    fi
-
-    tail -f /dev/null
+      # keep process alive until we receive SIGHUP
+      tail -f /dev/null
 EOF
   } > "$tmp/start.sh"
 
@@ -853,6 +787,7 @@ Type=simple
 ExecStart=/usr/bin/env bash /tmp/container/start.sh
 StandardOutput=journal+console
 StandardError=journal+console
+KillSignal=SIGHUP
 
 [Install]
 WantedBy=default.target
@@ -863,59 +798,53 @@ EOF
   ln -sf "/etc/systemd/system/container-start.service" "$container/etc/systemd/system/default.target.wants/container-start.service"
   mkfifo "$tmp/events"
   chmod a+w "$tmp/events"
+
   nspawn_start_args+=("--bind-ro=$tmp/container-start.service:/etc/systemd/system/container-start.service")
 
+  local -a nspawn_cmd=(
+    systemd-nspawn -bM "$container_name" -D "$container" "--bind-ro=$tmp:/tmp/container"
+    "${nspawn_args[@]}" "${nspawn_start_args[@]}"
+    -- "--log-level=$systemd_log_level"
+  )
+
   if [[ $((${#root_run_cmds[@]} + ${#run_cmds[@]})) -eq 0 ]]; then
-    exec systemd-nspawn -bM "$container_name" -D "$container" --bind-ro="$tmp:/tmp/container" \
-      "${nspawn_args[@]}" "${nspawn_start_args[@]}" \
-      -- --log-level="$systemd_log_level"
+    exec "${nspawn_cmd[@]}"
   fi
 
-  systemd-nspawn -bM "$container_name" -D "$container" --bind-ro="$tmp:/tmp/container" \
-    "${nspawn_args[@]}" "${nspawn_start_args[@]}" \
-    -- --log-level="$systemd_log_level" &
+  "${nspawn_cmd[@]}" &
 
   # shellcheck disable=SC2064
   trap "container_stop '$container_name'" RETURN
 
+  while read -r event < "$tmp/events"; do
+    echo "event: $event" >&2
+    case "$event" in
+    "start-done")
+      break
+      ;;
+    "start-fail" | "cmd-fail")
+      return 1
+      ;;
+    *)
+      return 2
+      ;;
+    esac
+  done
+
+  local cmd
+  local cur_user
   local -i i=0
   while ((i < ${#root_run_cmds[@]} + ${#run_cmds[@]})); do
-    local event
-    while read -r event < "$tmp/events"; do
-      echo "event: $event" >&2
-      case "$event" in
-      "start-done") break ;;
-      "cmd-done")
-        i=$((i + 1))
-        if ! ((i < ${#root_run_cmds[@]} + ${#run_cmds[@]})); then
-          break 2
-        fi
-        break
-        ;;
-      "start-fail" | "cmd-fail")
-        return 1
-        ;;
-      *) return 2 ;;
-      esac
-    done
-
-    local -a systemd_run_args=()
-    local cmd
     if ((i < ${#root_run_cmds[@]})); then
-      cmd="/tmp/root_run_cmds/$i"
-      systemd_run_args=("--machine=root@${container_name}")
+      cmd="${root_run_cmds[$i]}"
+      cur_user="root"
     else
-      cmd="/tmp/run_cmds/$((i - ${#root_run_cmds[@]}))"
-      if [[ "$user" == "root" ]]; then
-        systemd_run_args=("--machine=root@${container_name}")
-      else
-        systemd_run_args=("--user" "--machine=${user}@${container_name}")
-      fi
+      cmd="${run_cmds[$((i - ${#root_run_cmds[@]}))]}"
+      cur_user="$user"
     fi
-    echo "Run cmd $i" >&2
-    systemd-run "${systemd_run_args[@]}" --pipe /usr/bin/env bash "$cmd" &
+    container_exec --pipe --wait -- "$cur_user" "$container_name" "$cmd"
+    i=$((i + 1))
   done
-  echo "Done" >&2
 }
 
 function cmd_run() {
