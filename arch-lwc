@@ -58,7 +58,7 @@ Options
   -v              Display $prog version and copyright information.
   -q              Output debug messages.
 
-Commands
+COMMANDs
   create   Create a new container.
   exec     Execute a command in a running container.
   help     Display usage information.
@@ -67,7 +67,6 @@ Commands
   status   Display container status.
   stop     Stop a running container.
   version  Display $prog version and copyright information.
-
 EOF
 }
 
@@ -76,21 +75,19 @@ function usage_help() {
 }
 
 function usage_all() {
+  local cmds=(
+    create exec run start
+    status stop version
+  )
+  local c
   usage
-  echo -e "-----\n"
-  usage_create
-  echo -e "-----\n"
-  usage_exec
-  echo -e "-----\n"
-  usage_run
-  echo -e "-----\n"
-  usage_start
-  echo -e "-----\n"
-  usage_status
-  echo -e "-----\n"
-  usage_stop
-  echo -e "-----\n"
-  usage_version
+  for c in "${cmds[@]}"; do
+    cat << EOF
+
+COMMAND $c
+$("usage_$c" | sed 's/^/  /')
+EOF
+  done
 }
 
 function usage_version() {
@@ -116,9 +113,9 @@ Options
 
   -u USER         Name of target user inside the container. If the user doesn't
                   exist, it will created. to create inside container. Any
-                  commands specified with -x or -c will run as this user from the
-                  user's home directory. If not specified, the $default_user user will be
-                  used.
+                  commands specified with -x or -c will run as this user from
+                  the user's home directory. If not specified, the
+                  $default_user user will be used.
 
   -g GRP[,GRP...] Add the user to these groups in addition to the default
                   groups. (default: $default_groups)
@@ -197,7 +194,6 @@ function usage_create() {
 Usage: $prog create [OPT...] CONTAINER
 
 Create a new container at the path CONTAINER.
-
 EOF
   _usage_create_run create
 }
@@ -251,7 +247,6 @@ Options
 
   -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
                   -c CMDs.
-
 EOF
 }
 
@@ -260,7 +255,6 @@ function usage_run() {
 Usage: $prog run [OPT...] CONTAINER
 
 Create and run a new container at the path CONTAINER.
-
 EOF
   _usage_create_run run
 }
@@ -278,8 +272,6 @@ Options
                   specified with -c will run as this user from the user's home
                   directory. If not specified, the user that the container was
                   created with or the $default_user user will be used.
-
-
 EOF
 }
 
@@ -288,7 +280,6 @@ function usage_stop() {
 Usage: $prog stop CONTAINER
 
 Stop a running container.
-
 EOF
 }
 
@@ -297,7 +288,6 @@ function usage_status() {
 Usage: $prog status CONTAINER
 
 Display container status.
-
 EOF
 }
 
