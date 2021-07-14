@@ -116,6 +116,7 @@ COMMAND create
     -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
                     -c CMDs.
   
+    -k              Keep the container running after all CMDs have been executed.
 
 COMMAND exec
   Usage: arch-lwc exec [OPT...] CONTAINER [CMD] [ARG...]
@@ -209,6 +210,7 @@ COMMAND run
     -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
                     -c CMDs.
   
+    -k              Keep the container running after all CMDs have been executed.
 
 COMMAND start
   Usage: arch-lwc start [OPT...] CONTAINER
@@ -258,6 +260,11 @@ COMMAND start
   
     -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
                     -c CMDs.
+  
+    -k              Keep the container running after all CMDs have been executed.
+  
+    -K              Inverse of -k. Only necessary if -k was specified during
+                    container creation.
 
 COMMAND status
   Usage: arch-lwc status CONTAINER

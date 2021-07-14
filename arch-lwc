@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2021 Maddison Hellstrom <https://github.com/b0o>, MIT License.
 
-set -euo pipefail
+set -meuo pipefail
 if [[ ${BASH_VERSINFO[0]} -ge 5 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -ge 4) ]]; then
   shopt -s inherit_errexit
 fi
@@ -186,6 +186,7 @@ EOF
   -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
                   -c CMDs.
 
+  -k              Keep the container running after all CMDs have been executed.
 EOF
 }
 
@@ -247,6 +248,11 @@ Options
 
   -C CMD          Like -c, but run CMD as the root user root. -C CMDs are run before
                   -c CMDs.
+
+  -k              Keep the container running after all CMDs have been executed.
+
+  -K              Inverse of -k. Only necessary if -k was specified during
+                  container creation.
 EOF
 }
 
@@ -419,10 +425,11 @@ function cmd_create() {
   local -a root_run_cmds=()
   local -a nspawn_args=()
   local -a nspawn_create_args=()
+  local -i keep_alive=0
 
   local opt OPTARG
   local -i OPTIND
-  while getopts "hp:P:u:g:G:Tf:n:b:B:e:x:X:c:C:" opt "$@"; do
+  while getopts "hp:P:u:g:G:Tf:n:b:B:e:x:X:c:C:k:" opt "$@"; do
     case "$opt" in
     h)
       # shellcheck disable=SC2119
@@ -485,6 +492,9 @@ function cmd_create() {
       ;;
     C)
       root_run_cmds+=("$OPTARG")
+      ;;
+    k)
+      keep_alive=1
       ;;
     \?)
       return 1
@@ -578,7 +588,8 @@ function cmd_create() {
   {
     declare -p version pkgs_base pkgs user \
       groups_base groups securetty files \
-      build_cmds run_cmds root_run_cmds nspawn_args
+      build_cmds run_cmds root_run_cmds nspawn_args \
+      keep_alive
   } | write_config "$container_base/config"
 
   {
@@ -591,6 +602,7 @@ function cmd_create() {
       if ! getent passwd "$user" >/dev/null 2>&1; then
         useradd -Ums /bin/bash "$user"
       fi
+      systemctl mask console-getty.service
 EOF
     if [[ -n "$groups" ]]; then
       echo "usermod -aG \"$groups\" \"$user\""
@@ -655,9 +667,11 @@ function cmd_start() {
   local -a nspawn_args=()
   local -i nspawn_args_override=0
 
+  local -i keep_alive=-1
+
   local opt OPTARG
   local -i OPTIND
-  while getopts "hu:n:b:B:e:c:C:" opt "$@"; do
+  while getopts "hu:n:b:B:e:c:C:kK" opt "$@"; do
     case "$opt" in
     h)
       # shellcheck disable=SC2119
@@ -697,6 +711,12 @@ function cmd_start() {
         root_run_cmds+=("$OPTARG")
       fi
       ;;
+    k)
+      keep_alive=1
+      ;;
+    K)
+      keep_alive=0
+      ;;
     \?)
       return 1
       ;;
@@ -730,7 +750,7 @@ function cmd_start() {
   # shellcheck disable=SC2034
   local -a config_pkgs_base config_pkgs config_files config_build_cmds config_run_cmds config_root_run_cmds config_nspawn_args
   # shellcheck disable=SC2034
-  local -i config_securetty
+  local -i config_securetty config_keep_alive
 
   # shellcheck disable=SC1090
   source <(load_config "$container_base/config")
@@ -749,6 +769,13 @@ function cmd_start() {
   if [[ $nspawn_args_override -eq 0 ]]; then
     nspawn_args=("${config_nspawn_args[@]}" "${nspawn_args[@]}")
   fi
+  if [[ $keep_alive -eq -1 ]]; then
+    if [[ $((${#root_run_cmds[@]} + ${#run_cmds[@]})) -eq 0 ]]; then
+      keep_alive=1
+    else
+      keep_alive=${config_keep_alive:-0}
+    fi
+  fi
   user="${user:-${config_user:-${default_user}}}"
 
   {
@@ -764,7 +791,7 @@ function cmd_start() {
       trap handle_exit EXIT
       trap 'handle_exit 0' HUP
 
-      systemctl disable container-start.service || true
+      systemctl disable container-start.service
 
       echo "start-done" | tee /tmp/container/events
 
@@ -801,23 +828,16 @@ EOF
 
   nspawn_start_args+=("--bind-ro=$tmp/container-start.service:/etc/systemd/system/container-start.service")
 
-  local -a nspawn_cmd=(
-    systemd-nspawn -bM "$container_name" -D "$container" "--bind-ro=$tmp:/tmp/container"
-    "${nspawn_args[@]}" "${nspawn_start_args[@]}"
-    -- "--log-level=$systemd_log_level"
-  )
-
-  if [[ $((${#root_run_cmds[@]} + ${#run_cmds[@]})) -eq 0 ]]; then
-    exec "${nspawn_cmd[@]}"
-  fi
-
-  "${nspawn_cmd[@]}" &
+  systemd-nspawn -bM "$container_name" -D "$container" --console=read-only --bind-ro="$tmp:/tmp/container" \
+    "${nspawn_args[@]}" "${nspawn_start_args[@]}" \
+    -- --log-level="$systemd_log_level" >&1 2>&2 < /dev/null &
 
   # shellcheck disable=SC2064
   trap "container_stop '$container_name'" RETURN
+  trap "return 0" INT
 
   while read -r event < "$tmp/events"; do
-    echo "event: $event" >&2
+    echo "Container event: $event" >&2
     case "$event" in
     "start-done")
       break
@@ -845,6 +865,14 @@ EOF
     container_exec --pipe --wait -- "$cur_user" "$container_name" "$cmd"
     i=$((i + 1))
   done
+
+  if [[ $i -gt 0 ]]; then
+    echo "Finished executing commands" >&2
+  fi
+  if [[ $keep_alive -eq 1 ]]; then
+    trap "return 0" INT
+    wait
+  fi
 }
 
 function cmd_run() {
@@ -984,7 +1012,7 @@ function cmd_exec() {
   # shellcheck disable=SC2034
   local -a config_pkgs_base config_pkgs config_files config_build_cmds config_run_cmds config_root_run_cmds config_nspawn_args
   # shellcheck disable=SC2034
-  local -i config_securetty
+  local -i config_securetty config_keep_alive
 
   # shellcheck disable=SC1090
   source <(load_config "$container_base/config")
