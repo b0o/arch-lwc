@@ -43,7 +43,9 @@ COMMANDs
 COMMAND create
   Usage: arch-lwc create [OPT...] CONTAINER
   
-  Create a new container at the path CONTAINER.
+  Create a new container at the path CONTAINER. Options specified during
+  container creation are persisted and will be used as defaults any time the
+  container is started.
   Options
     -p PKG          Append package to list of packages to be installed. May be
                     specified more than once. (default: base pacman-contrib)
@@ -71,10 +73,11 @@ COMMAND create
   
     -n NSPAWNARG    When running the container, pass NSPAWNARG as a command-line
                     argument to systemd-nspawn. May be specified more than once.
+  
                     Arguments with values, such as for systemd-nspawn's -E /
                     --setenv option, should be passed either as a single -n with
-                    no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential -n
-                    arguments (e.g. -n "-E" -n "VAR=VAL").
+                    no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential
+                    -n arguments (e.g. -n "-E" -n "VAR=VAL").
   
                     See systemd-nspawn(1) for more information on systemd-nspawn
                     arguments. Note that certain systemd-nspawn arguments may conflict
@@ -87,6 +90,9 @@ COMMAND create
                       -b ARG          --bind=ARG
                       -B ARG          --bind-ro=ARG
                       -e ARG          --setenv=ARG
+  
+                    Note: Environment variables set with -e will not be available
+                    to CMDs run with -{x,X,c,C}.
   
     -x CMD          Run CMD inside the container as the target user after
                     preliminary setup is complete. CMD will be interpreted by bash
@@ -162,10 +168,11 @@ COMMAND run
   
     -n NSPAWNARG    When running the container, pass NSPAWNARG as a command-line
                     argument to systemd-nspawn. May be specified more than once.
+  
                     Arguments with values, such as for systemd-nspawn's -E /
                     --setenv option, should be passed either as a single -n with
-                    no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential -n
-                    arguments (e.g. -n "-E" -n "VAR=VAL").
+                    no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential
+                    -n arguments (e.g. -n "-E" -n "VAR=VAL").
   
                     See systemd-nspawn(1) for more information on systemd-nspawn
                     arguments. Note that certain systemd-nspawn arguments may conflict
@@ -178,6 +185,9 @@ COMMAND run
                       -b ARG          --bind=ARG
                       -B ARG          --bind-ro=ARG
                       -e ARG          --setenv=ARG
+  
+                    Note: Environment variables set with -e will not be available
+                    to CMDs run with -{x,X,c,C}.
   
     -x CMD          Run CMD inside the container as the target user after
                     preliminary setup is complete. CMD will be interpreted by bash
@@ -225,10 +235,12 @@ COMMAND start
                     created with or the root user will be used.
   
     -n NSPAWNARG    Pass NSPAWNARG as a command-line argument to systemd-nspawn.
-                    May be specified more than once.  Arguments with values, such
-                    as for systemd-nspawn's -E / --setenv option, should be passed
-                    either as a single -n with no spaces (e.g. -n "--setenv=VAR=VAL")
-                    or as two sequential -n arguments (e.g. -n "-E" -n "VAR=VAL").
+                    May be specified more than once.
+  
+                    Arguments with values, such as for systemd-nspawn's -E /
+                    --setenv option, should be passed either as a single -n with
+                    no spaces (e.g. -n "--setenv=VAR=VAL") or as two sequential
+                    -n arguments (e.g. -n "-E" -n "VAR=VAL").
   
                     See systemd-nspawn(1) for more information on systemd-nspawn
                     arguments. Note that certain systemd-nspawn arguments may conflict
@@ -241,6 +253,9 @@ COMMAND start
                       -b ARG          --bind=ARG
                       -B ARG          --bind-ro=ARG
                       -e ARG          --setenv=ARG
+  
+                    Note: Environment variables set with -e will not be available
+                    to CMDs run with -{x,X,c,C}.
   
     -N NSPAWNARG    Like -n, but override any NSPAWNARGs specified during container creation.
   
