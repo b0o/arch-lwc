@@ -85,7 +85,7 @@ function usage_all() {
     cat << EOF
 
 COMMAND $c
-$("usage_$c" | sed 's/^/  /')
+$("usage_$c" | sed '/[^$]/s/^/  /')
 EOF
   done
 }
