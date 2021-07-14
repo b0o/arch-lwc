@@ -194,7 +194,9 @@ function usage_create() {
   cat << EOF
 Usage: $prog create [OPT...] CONTAINER
 
-Create a new container at the path CONTAINER.
+Create a new container at the path CONTAINER. Options specified during
+container creation are persisted and will be used as defaults any time the
+container is started.
 EOF
   _usage_create_run create
 }
