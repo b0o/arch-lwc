@@ -546,7 +546,7 @@ function cmd_create() {
     mkdir -p "$container"
   fi
 
-  pacstrap -G "$container" "${pkgs[@]}"
+  pacstrap "$container" "${pkgs[@]}"
 
   if [[ $securetty -eq 0 ]]; then
     echo "Remove securetty configuration" >&2
