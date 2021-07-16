@@ -619,7 +619,7 @@ EOF
     fi
     for i in $(seq 1 ${#build_cmds[@]}); do
       echo "echo \"build command $i\""
-      echo "env -C /root bash /tmp/container/build_cmds/$i.sh"
+      echo "env -C /root bash /tmp/container/build_cmds/$i"
     done
     echo "echo \"Setup complete\""
   } > "$tmp/setup.sh"
