@@ -164,9 +164,6 @@ Options
                   Note that CMD only runs during the container creation phase, not
                   when the container is run. For that, see -c.
 
-  -X CMD          Like -x, but run CMD as the root user. -X CMDs are run before
-                  -x CMDs.
-
   -c CMD          Run CMD inside the container when the container is run. CMD
                   will be interpreted by bash and can contain multiple
                   statements separated by semicolons and/or newlines.
@@ -431,7 +428,6 @@ function cmd_create() {
   local -i securetty=0
   local -a files=()
   local -a build_cmds=()
-  local -a root_build_cmds=()
   local -a run_cmds=()
   local -a root_run_cmds=()
   local -a nspawn_args=()
@@ -440,7 +436,7 @@ function cmd_create() {
 
   local opt OPTARG
   local -i OPTIND
-  while getopts "hp:P:u:g:G:Tf:n:b:B:e:x:X:c:C:k:" opt "$@"; do
+  while getopts "hp:P:u:g:G:Tf:n:b:B:e:x:c:C:k:" opt "$@"; do
     case "$opt" in
     h)
       # shellcheck disable=SC2119
@@ -494,9 +490,6 @@ function cmd_create() {
       ;;
     x)
       build_cmds+=("$OPTARG")
-      ;;
-    X)
-      root_build_cmds+=("$OPTARG")
       ;;
     c)
       run_cmds+=("$OPTARG")
