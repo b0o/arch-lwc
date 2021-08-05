@@ -38,6 +38,7 @@ COMMANDs
   start    Start an existing container.
   status   Display container status.
   stop     Stop a running container.
+  update   Update a container.
   version  Display arch-lwc version and copyright information.
 
 COMMAND create
@@ -104,9 +105,6 @@ COMMAND create
 
                     Note that CMD only runs during the container creation phase, not
                     when the container is run. For that, see -c.
-
-    -X CMD          Like -x, but run CMD as the root user. -X CMDs are run before
-                    -x CMDs.
 
     -c CMD          Run CMD inside the container when the container is run. CMD
                     will be interpreted by bash and can contain multiple
@@ -200,9 +198,6 @@ COMMAND run
                     Note that CMD only runs during the container creation phase, not
                     when the container is run. For that, see -c.
 
-    -X CMD          Like -x, but run CMD as the root user. -X CMDs are run before
-                    -x CMDs.
-
     -c CMD          Run CMD inside the container when the container is run. CMD
                     will be interpreted by bash and can contain multiple
                     statements separated by semicolons and/or newlines.
@@ -257,7 +252,8 @@ COMMAND start
                     Note: Environment variables set with -e will not be available
                     to CMDs run with -{x,X,c,C}.
 
-    -N NSPAWNARG    Like -n, but override any NSPAWNARGs specified during container creation.
+                    If NSPAWNARG is "-", any -n NSPAWNARGs specified when the
+                    container was created are overridden.
 
     -c CMD          Run CMD inside the container. CMD will be interpreted by bash
                     and can contain multiple statements separated by semicolons
@@ -290,6 +286,11 @@ COMMAND stop
   Usage: arch-lwc stop CONTAINER
 
   Stop a running container.
+
+COMMAND update
+  Usage: arch-lwc Update CONTAINER
+
+  Update a container.
 
 COMMAND version
   arch-lwc version 0.0.4
