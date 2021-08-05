@@ -981,6 +981,7 @@ function cmd_status() {
     echo "running"
   else
     echo "stopped"
+    return 2
   fi
 }
 
