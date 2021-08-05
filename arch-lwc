@@ -78,7 +78,7 @@ function usage_help() {
 function usage_all() {
   local cmds=(
     create exec run start
-    status stop version
+    status stop update version
   )
   local c
   usage
