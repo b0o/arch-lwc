@@ -293,7 +293,7 @@ COMMAND update
   Update a container.
 
 COMMAND version
-  arch-lwc version 0.0.4
+  arch-lwc version 0.0.5
   Repository: https://github.com/b0o/arch-lwc
   Issues:     https://github.com/b0o/arch-lwc/issues
   License:    MIT (https://mit-license.org)
