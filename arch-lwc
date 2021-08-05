@@ -688,7 +688,6 @@ function cmd_start() {
   while getopts "hu:n:b:B:e:c:C:kK" opt "$@"; do
     case "$opt" in
     h)
-      # shellcheck disable=SC2119
       cmd_help
       return 0
       ;;
