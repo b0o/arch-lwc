@@ -66,6 +66,7 @@ COMMANDs
   start    Start an existing container.
   status   Display container status.
   stop     Stop a running container.
+  update   Update a container.
   version  Display $prog version and copyright information.
 EOF
 }
@@ -302,6 +303,14 @@ function usage_status() {
 Usage: $prog status CONTAINER
 
 Display container status.
+EOF
+}
+
+function usage_update() {
+  cat << EOF
+Usage: $prog Update CONTAINER
+
+Update a container.
 EOF
 }
 
@@ -1027,6 +1036,42 @@ function cmd_exec() {
     container_shell "$user" "$container_name"
   else
     container_exec --pipe --wait -- "$user" "$container_name" "$@"
+  fi
+}
+
+function cmd_update() {
+  local opt OPTARG
+  local -i OPTIND
+  while getopts "h" opt "$@"; do
+    case "$opt" in
+    h)
+      # shellcheck disable=SC2119
+      cmd_help
+      return 0
+      ;;
+    \?)
+      return 1
+      ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  if [[ $# -lt 1 ]]; then
+    echo "$prog: error: expected CONTAINER" >&2
+    return 1
+  fi
+
+  local container container_base container_name
+  container_base="$(realpath -m "$1")"
+  container="${container_base}/container"
+  container_name="$(basename "$container_base")"
+  shift
+
+  local cmd="pacman -Syyu"
+  if ! machinectl status "$container_name" &> /dev/null; then
+    cmd_start -Kc - -C - -C "$cmd" "$container"
+  else
+    cmd_exec -u root "$container_base" "$cmd"
   fi
 }
 
