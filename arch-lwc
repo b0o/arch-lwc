@@ -239,7 +239,8 @@ Options
                   Note: Environment variables set with -e will not be available
                   to CMDs run with -{x,X,c,C}.
 
-  -N NSPAWNARG    Like -n, but override any NSPAWNARGs specified during container creation.
+                  If NSPAWNARG is "-", any -n NSPAWNARGs specified when the
+                  container was created are overridden.
 
   -c CMD          Run CMD inside the container. CMD will be interpreted by bash
                   and can contain multiple statements separated by semicolons
