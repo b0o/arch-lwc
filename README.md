@@ -54,8 +54,9 @@ COMMAND create
     -P PKG          Like -p, but override default packages.
 
     -u USER         Name of target user inside the container. If the user doesn't
-                    exist, it will created. to create inside container. Any
-                    commands specified with -x or -c will run as this user from
+                    exist, it will created.
+
+                    Any commands specified with -x or -c will run as this user from
                     the user's home directory. If not specified, the
                     root user will be used.
 
