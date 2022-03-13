@@ -1071,7 +1071,7 @@ function cmd_update() {
 
   local cmd="pacman -Syyu"
   if ! machinectl status "$container_name" &> /dev/null; then
-    cmd_start -Kc - -C - -C "$cmd" "$container"
+    cmd_start -Kc - -C - -C "$cmd" "$container_base"
   else
     cmd_exec -u root "$container_base" "$cmd"
   fi
