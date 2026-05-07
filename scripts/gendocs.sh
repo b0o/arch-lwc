@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2020-2021 Maddison Hellstrom <https://github.com/b0o>
+# Copyright 2020-2021 Maddison Cohodas <https://github.com/b0o>
 # MIT License
 
 set -Eeuo pipefail
@@ -25,7 +25,7 @@ declare -gi copyright_start=2021
 function target_readme() {
   section -s USAGE -c <<< "$("$main" -h all 2>&1)"
   section -s LICENSE << EOF
-&copy; ${copyright_start}$( (($(date +%Y) == copyright_start)) || date +-%Y) Maddison Hellstrom
+&copy; ${copyright_start}$( (($(date +%Y) == copyright_start)) || date +-%Y) Maddison Cohodas
 
 Released under the MIT License.
 EOF

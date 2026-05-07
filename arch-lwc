@@ -2,7 +2,7 @@
 
 # Create and run lightweight containers
 #
-# Copyright (C) 2021 Maddison Hellstrom <https://github.com/b0o>, MIT License.
+# Copyright (C) 2021 Maddison Cohodas <https://github.com/b0o>, MIT License.
 
 set -meuo pipefail
 if [[ ${BASH_VERSINFO[0]} -ge 5 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -ge 4) ]]; then
@@ -26,7 +26,7 @@ prog="$(basename "$base")"
 
 # Meta
 declare -gr version="0.0.5"
-declare -gr authors=("$(years_from 2021) Maddison Hellstrom <github.com/b0o>")
+declare -gr authors=("$(years_from 2021) Maddison Cohodas <github.com/b0o>")
 declare -gr repository="https://github.com/b0o/$prog"
 declare -gr issues="https://github.com/b0o/$prog/issues"
 declare -gr license="MIT"

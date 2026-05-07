@@ -298,7 +298,7 @@ COMMAND version
   Repository: https://github.com/b0o/arch-lwc
   Issues:     https://github.com/b0o/arch-lwc/issues
   License:    MIT (https://mit-license.org)
-  Copyright:  2021 Maddison Hellstrom <github.com/b0o>
+  Copyright:  2021 Maddison Cohodas <github.com/b0o>
 
 ```
 
@@ -314,7 +314,7 @@ COMMAND version
 
 <!-- LICENSE -->
 
-&copy; 2021 Maddison Hellstrom
+&copy; 2021 Maddison Cohodas
 
 Released under the MIT License.
 
